@@ -87,6 +87,36 @@ class R2Source implements Source {
   }
 }
 
+export const slice = (input: {
+  ok: boolean;
+  name: string;
+  tile?: [number, number, number];
+  ext: string;
+}): {
+  ok: boolean;
+  name: string;
+  tile?: [number, number, number];
+  ext: string;
+} => {
+  // pass through inapplicable inputs unchanged
+  if (!input.ok || !input.tile || input.name !== "OSM_traces") return input;
+
+  const [z, x, y] = input.tile;
+  if (z < 7) return { ok: false, name: "", tile: [0, 0, 0], ext: "" };
+
+  const shift = z - 7;
+  const nameX = x >> shift;
+  const nameY = y >> shift;
+
+  return {
+    ok: true,
+    name: `7/${nameX}/${nameY}/${input.name}+7-${nameX}-${nameY}`,
+    tile: input.tile,
+    ext: input.ext,
+  };
+};
+
+
 export default {
   async fetch(
     request: Request,
@@ -97,7 +127,7 @@ export default {
       return new Response(undefined, { status: 405 });
 
     const url = new URL(request.url);
-    const { ok, name, tile, ext } = tile_path(url.pathname);
+    const { ok, name, tile, ext } = slice(tile_path(url.pathname));
 
     const cache = caches.default;
 
