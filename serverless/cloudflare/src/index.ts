@@ -116,7 +116,6 @@ export const slice = (input: {
   };
 };
 
-
 export default {
   async fetch(
     request: Request,
