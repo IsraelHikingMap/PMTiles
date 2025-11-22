@@ -99,10 +99,15 @@ export const slice = (input: {
   ext: string;
 } => {
   // pass through inapplicable inputs unchanged
+  // TODO: Avoid hard-coded tile source name
   if (!input.ok || !input.tile || input.name !== "OSM_traces") return input;
 
+  // TODO: <tilesource>.json
   const [z, x, y] = input.tile;
-  if (z < 7) return { ok: false, name: "", tile: [0, 0, 0], ext: "" };
+  if (z < 7) {
+      input.name = `{input.name}-6`
+      return input;
+  }
 
   const shift = z - 7;
   const nameX = x >> shift;
