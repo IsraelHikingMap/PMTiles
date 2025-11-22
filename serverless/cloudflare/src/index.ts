@@ -105,7 +105,7 @@ export const slice = (input: {
   // TODO: <tilesource>.json
   const [z, x, y] = input.tile;
   if (z < 7) {
-    input.name = `{input.name}-6`
+    input.name = "{input.name}-6";
     return input;
   }
 
