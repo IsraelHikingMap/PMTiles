@@ -246,7 +246,7 @@ export default {
       return cacheableResponse(undefined, cacheableHeaders, 204);
     } catch (e) {
       if (e instanceof KeyNotFoundError) {
-        return cacheableResponse("Archive not found", cacheableHeaders, 404);
+        return new Response("Archive not found", { status: 404 });
       }
       throw e;
     }
