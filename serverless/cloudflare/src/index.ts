@@ -199,7 +199,13 @@ export default {
         return cacheableResponse(JSON.stringify(t), cacheableHeaders, 200);
       }
 
-      if (tile[0] < pHeader.minZoom || tile[0] > pHeader.maxZoom) {
+      if (tile[0] < pHeader.minZoom) {
+        return cacheableResponse(undefined, cacheableHeaders, 404);
+      }
+      if (tile[0] > pHeader.maxZoom) {
+        if (pHeader.tileType === TileType.Mvt) {
+          return cacheableResponse(undefined, cacheableHeaders, 418);
+        }
         return cacheableResponse(undefined, cacheableHeaders, 404);
       }
 
