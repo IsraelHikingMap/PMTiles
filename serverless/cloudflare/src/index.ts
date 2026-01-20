@@ -20,6 +20,8 @@ interface Env {
   PMTILES_PATH?: string;
   // biome-ignore lint: config name
   PUBLIC_HOSTNAME?: string;
+  // biome-ignore lint: config name
+  SLICED_SOURCES?: string;
 }
 
 class KeyNotFoundError extends Error {}
@@ -87,20 +89,31 @@ class R2Source implements Source {
   }
 }
 
-export const slice = (input: {
-  ok: boolean;
-  name: string;
-  tile?: [number, number, number];
-  ext: string;
-}): {
+export const slice = (
+  input: {
+    ok: boolean;
+    name: string;
+    tile?: [number, number, number];
+    ext: string;
+  },
+  env: Env
+): {
   ok: boolean;
   name: string;
   tile?: [number, number, number];
   ext: string;
 } => {
   // pass through inapplicable inputs unchanged
-  // TODO: Avoid hard-coded tile source name
-  if (!input.ok || !input.tile || input.name !== "OSM_traces") return input;
+  if (!input.ok || !input.tile || typeof env.SLICED_SOURCES === "undefined")
+    return input;
+  let isSliced = false;
+  for (const s of env.SLICED_SOURCES.split(",")) {
+    if (s === input.name) {
+      isSliced = true;
+      break;
+    }
+  }
+  if (!isSliced) return input;
 
   // TODO: <tilesource>.json
   const [z, x, y] = input.tile;
@@ -131,7 +144,7 @@ export default {
       return new Response(undefined, { status: 405 });
 
     const url = new URL(request.url);
-    const { ok, name, tile, ext } = slice(tile_path(url.pathname));
+    const { ok, name, tile, ext } = slice(tile_path(url.pathname), env);
 
     const cache = caches.default;
 
