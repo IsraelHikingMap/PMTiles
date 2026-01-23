@@ -7,7 +7,7 @@ import {
   Source,
   TileType,
 } from "pmtiles";
-import { pmtiles_path, tile_path } from "../../shared/index";
+import { type SliceInput, pmtiles_path, tile_path } from "../../shared/index";
 
 interface Env {
   // biome-ignore lint: config name
@@ -89,37 +89,30 @@ class R2Source implements Source {
   }
 }
 
-export const slice = (
-  input: {
-    ok: boolean;
-    name: string;
-    tile?: [number, number, number];
-    ext: string;
-  },
-  env: Env
-): {
-  ok: boolean;
-  name: string;
-  tile?: [number, number, number];
-  ext: string;
-} => {
-  // pass through inapplicable inputs unchanged
-  if (!input.ok || !input.tile || typeof env.SLICED_SOURCES === "undefined")
-    return input;
-  let isSliced = false;
-  for (const s of env.SLICED_SOURCES.split(",")) {
-    if (s === input.name) {
-      isSliced = true;
-      break;
-    }
-  }
-  if (!isSliced) return input;
+// TODO Consider AWS
+// - [ ] Move isSourceSliced() and slice() to ../../shared/index.ts
+// - [ ] Integrate slice() functionality into tile_path()
+// - [ ] Add isSourceSliced to the results of tile_path()
 
-  // TODO: <tilesource>.json
-  const [z, x, y] = input.tile;
-  if (z < 7) {
-    input.name = "{input.name}-6";
+const isSourceSliced = (targetName: string, env: Env): boolean => {
+  return (
+    typeof env.SLICED_SOURCES !== "undefined" &&
+    env.SLICED_SOURCES.split(",").includes(targetName)
+  );
+};
+
+const slice = (input: SliceInput, env: Env): SliceInput => {
+  if (!input.ok || !input.tile || !isSourceSliced(input.name, env)) {
     return input;
+  }
+
+  const [z, x, y] = input.tile;
+
+  if (z < 7) {
+    return {
+      ...input,
+      name: `${input.name}-6`,
+    };
   }
 
   const shift = z - 7;
@@ -127,10 +120,8 @@ export const slice = (
   const nameY = y >> shift;
 
   return {
-    ok: true,
+    ...input,
     name: `7/${nameX}/${nameY}/${input.name}+7-${nameX}-${nameY}`,
-    tile: input.tile,
-    ext: input.ext,
   };
 };
 
@@ -205,6 +196,7 @@ export default {
       const pHeader = await p.getHeader();
 
       if (!tile) {
+        // TODO: serve tilejson from file for sliced sources
         cacheableHeaders.set("Content-Type", "application/json");
         const t = await p.getTileJson(
           `https://${env.PUBLIC_HOSTNAME || url.hostname}/${name}`
