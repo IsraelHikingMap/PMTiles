@@ -7,7 +7,7 @@ import {
   Source,
   TileType,
 } from "pmtiles";
-import { pmtiles_path, tile_path } from "../../shared/index";
+import { type SliceInput, pmtiles_path, tile_path } from "../../shared/index";
 
 interface Env {
   // biome-ignore lint: config name
@@ -20,6 +20,8 @@ interface Env {
   PMTILES_PATH?: string;
   // biome-ignore lint: config name
   PUBLIC_HOSTNAME?: string;
+  // biome-ignore lint: config name
+  SLICED_SOURCES?: string;
 }
 
 class KeyNotFoundError extends Error {}
@@ -87,6 +89,42 @@ class R2Source implements Source {
   }
 }
 
+// TODO Consider AWS
+// - [ ] Move isSourceSliced() and slice() to ../../shared/index.ts
+// - [ ] Integrate slice() functionality into tile_path()
+// - [ ] Add isSourceSliced to the results of tile_path()
+
+const isSourceSliced = (targetName: string, env: Env): boolean => {
+  return (
+    typeof env.SLICED_SOURCES !== "undefined" &&
+    env.SLICED_SOURCES.split(",").includes(targetName)
+  );
+};
+
+const slice = (input: SliceInput, env: Env): SliceInput => {
+  if (!input.ok || !input.tile || !isSourceSliced(input.name, env)) {
+    return input;
+  }
+
+  const [z, x, y] = input.tile;
+
+  if (z < 7) {
+    return {
+      ...input,
+      name: `${input.name}-6`,
+    };
+  }
+
+  const shift = z - 7;
+  const nameX = x >> shift;
+  const nameY = y >> shift;
+
+  return {
+    ...input,
+    name: `7/${nameX}/${nameY}/${input.name}+7-${nameX}-${nameY}`,
+  };
+};
+
 export default {
   async fetch(
     request: Request,
@@ -97,7 +135,7 @@ export default {
       return new Response(undefined, { status: 405 });
 
     const url = new URL(request.url);
-    const { ok, name, tile, ext } = tile_path(url.pathname);
+    const { ok, name, tile, ext } = slice(tile_path(url.pathname), env);
 
     const cache = caches.default;
 
@@ -152,11 +190,27 @@ export default {
     };
 
     const cacheableHeaders = new Headers();
+    if (isSourceSliced(name, env) && !tile) {
+      // serve tilejson from file for sliced sources
+      cacheableHeaders.set("Content-Type", "application/json");
+      const pmtilesPath = pmtiles_path(name, env.PMTILES_PATH);
+      const jsonResp = await env.BUCKET.get(
+        pmtilesPath.replace(/\.pmtiles$/, ".json")
+      );
+      if (!jsonResp) {
+        return new Response("TileJSON not found", { status: 404 });
+      }
+      const jsonText = await jsonResp.text();
+      const t = JSON.parse(jsonText);
+      const baseUrl = `https://${env.PUBLIC_HOSTNAME || url.hostname}/${name}/`;
+      t.tiles = t.tiles?.map((tile: string) =>
+        tile.replace(/^https?:\/\/[^\/]+\//, baseUrl)
+      );
+      return cacheableResponse(JSON.stringify(t), cacheableHeaders, 200);
+    }
     const source = new R2Source(env, name);
     const p = new PMTiles(source, CACHE, nativeDecompress);
     try {
-      const pHeader = await p.getHeader();
-
       if (!tile) {
         cacheableHeaders.set("Content-Type", "application/json");
         const t = await p.getTileJson(
@@ -165,7 +219,14 @@ export default {
         return cacheableResponse(JSON.stringify(t), cacheableHeaders, 200);
       }
 
-      if (tile[0] < pHeader.minZoom || tile[0] > pHeader.maxZoom) {
+      const pHeader = await p.getHeader();
+      if (tile[0] < pHeader.minZoom) {
+        return cacheableResponse(undefined, cacheableHeaders, 404);
+      }
+      if (tile[0] > pHeader.maxZoom) {
+        if (pHeader.tileType === TileType.Mvt) {
+          return cacheableResponse(undefined, cacheableHeaders, 418);
+        }
         return cacheableResponse(undefined, cacheableHeaders, 404);
       }
 
@@ -212,7 +273,7 @@ export default {
       return cacheableResponse(undefined, cacheableHeaders, 204);
     } catch (e) {
       if (e instanceof KeyNotFoundError) {
-        return cacheableResponse("Archive not found", cacheableHeaders, 404);
+        return new Response("Archive not found", { status: 404 });
       }
       throw e;
     }
