@@ -190,13 +190,28 @@ export default {
     };
 
     const cacheableHeaders = new Headers();
+    if (isSourceSliced(name, env) && !tile) {
+      // serve tilejson from file for sliced sources
+      cacheableHeaders.set("Content-Type", "application/json");
+      const pmtilesPath = pmtiles_path(name, env.PMTILES_PATH);
+      const jsonResp = await env.BUCKET.get(
+        pmtilesPath.replace(/\.pmtiles$/, ".json")
+      );
+      if (!jsonResp) {
+        return new Response("TileJSON not found", { status: 404 });
+      }
+      const jsonText = await jsonResp.text();
+      const t = JSON.parse(jsonText);
+      const baseUrl = `https://${env.PUBLIC_HOSTNAME || url.hostname}/${name}/`;
+      t.tiles = t.tiles?.map((tile: string) =>
+        tile.replace(/^https?:\/\/[^\/]+\//, baseUrl)
+      );
+      return cacheableResponse(JSON.stringify(t), cacheableHeaders, 200);
+    }
     const source = new R2Source(env, name);
     const p = new PMTiles(source, CACHE, nativeDecompress);
     try {
-      const pHeader = await p.getHeader();
-
       if (!tile) {
-        // TODO: serve tilejson from file for sliced sources
         cacheableHeaders.set("Content-Type", "application/json");
         const t = await p.getTileJson(
           `https://${env.PUBLIC_HOSTNAME || url.hostname}/${name}`
@@ -204,6 +219,7 @@ export default {
         return cacheableResponse(JSON.stringify(t), cacheableHeaders, 200);
       }
 
+      const pHeader = await p.getHeader();
       if (tile[0] < pHeader.minZoom) {
         return cacheableResponse(undefined, cacheableHeaders, 404);
       }
