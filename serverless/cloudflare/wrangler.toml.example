@@ -28,10 +28,12 @@ head_sampling_rate = 1
 [vars]
 # change to https://example.com, etc. to limit CORS origins
 ALLOWED_ORIGINS = "*"
-# How long the edge may serve a tile before re-reading it from R2. Archives are immutable in
-# practice - a rebuild lands under a new name - so this can be long. Shorten it only if you
-# overwrite archives in place under a stable name.
-# CACHE_CONTROL = "public, max-age=31536000, immutable"
+# How long the edge may serve a response before re-reading from R2. This applies to the 404, 204
+# and 418 answers too, and those are derived from the archive header rather than intrinsic to the
+# tile, so a bad read is cached for as long as this allows. Cache API entries cannot be purged on
+# a workers.dev subdomain, so the TTL is the only thing that retires a wrong answer. A week bounds
+# that; avoid "immutable", which suppresses revalidation.
+# CACHE_CONTROL = "public, max-age=604800"
 
 # Comma separated sources stored as one archive per z7 tile, laid out as
 # 7/{x}/{y}/{name}+7-{x}-{y}.pmtiles, with zoom < 7 served from {name}-6.pmtiles. TileJSON for
