@@ -154,8 +154,6 @@ export default {
       env
     );
 
-    const cache = caches.default;
-
     if (!ok) {
       return new Response("Invalid URL", { status: 404 });
     }
@@ -169,19 +167,6 @@ export default {
       }
     }
 
-    const cached = await cache.match(request.url);
-    if (cached) {
-      const respHeaders = new Headers(cached.headers);
-      if (allowedOrigin)
-        respHeaders.set("Access-Control-Allow-Origin", allowedOrigin);
-      respHeaders.set("Vary", "Origin");
-
-      return new Response(cached.body, {
-        headers: respHeaders,
-        status: cached.status,
-      });
-    }
-
     const cacheableResponse = (
       body: ArrayBuffer | string | undefined,
       cacheableHeaders: Headers,
@@ -192,17 +177,11 @@ export default {
         env.CACHE_CONTROL || "public, max-age=86400"
       );
 
-      const cacheable = new Response(body, {
-        headers: cacheableHeaders,
-        status: status,
-      });
-
-      ctx.waitUntil(cache.put(request.url, cacheable));
-
       const respHeaders = new Headers(cacheableHeaders);
       if (allowedOrigin)
         respHeaders.set("Access-Control-Allow-Origin", allowedOrigin);
-      respHeaders.set("Vary", "Origin");
+      if (allowedOrigin && allowedOrigin !== "*")
+        respHeaders.set("Vary", "Origin");
       return new Response(body, { headers: respHeaders, status: status });
     };
 
@@ -215,7 +194,10 @@ export default {
         pmtilesPath.replace(/\.pmtiles$/, ".json")
       );
       if (!jsonResp) {
-        return new Response("TileJSON not found", { status: 404 });
+        return new Response("TileJSON not found", {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        });
       }
       const jsonText = await jsonResp.text();
       const t = JSON.parse(jsonText);
@@ -293,7 +275,10 @@ export default {
       return cacheableResponse(undefined, cacheableHeaders, 204);
     } catch (e) {
       if (e instanceof KeyNotFoundError) {
-        return new Response("Archive not found", { status: 404 });
+        return new Response("Archive not found", {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        });
       }
       throw e;
     }

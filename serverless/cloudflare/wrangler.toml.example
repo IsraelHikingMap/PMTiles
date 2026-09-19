@@ -12,7 +12,34 @@ preview_bucket_name = "my-bucket-development-name"
 # Bucket used on `wrangler deploy`
 bucket_name = "my-bucket-production-name"
 
+# Required: src/index.ts relies on this for caching and no longer caches on its own.
+# Collapses concurrent misses for one tile into a single R2 fill and tiers fills between colos.
+# The Worker version is part of the cache key, so each deploy starts with a cold cache. Setting
+# cross_version_cache = true avoids that, but needs a wrangler newer than 4.89 and with it
+# @cloudflare/workers-types v5.
+[cache]
+enabled = true
+
+# Reports per-request timings, including each R2 call, under the Worker's Observability tab.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [vars]
 # change to https://example.com, etc. to limit CORS origins
 ALLOWED_ORIGINS = "*"
-# CACHE_CONTROL = "public, max-age=86400"
+# How long the edge may serve a response before re-reading from R2. This applies to the 404, 204
+# and 418 answers too, and those are derived from the archive header rather than intrinsic to the
+# tile, so a bad read is cached for as long as this allows. Cache API entries cannot be purged on
+# a workers.dev subdomain, so the TTL is the only thing that retires a wrong answer. A week bounds
+# that; avoid "immutable", which suppresses revalidation.
+# CACHE_CONTROL = "public, max-age=604800"
+
+# Comma separated sources stored as one archive per z7 tile, laid out as
+# 7/{x}/{y}/{name}+7-{x}-{y}.pmtiles, with zoom < 7 served from {name}-6.pmtiles. TileJSON for
+# these is read from a sibling .json in the bucket rather than from the archive header.
+# SLICED_SOURCES = "my-sliced-source,my-other-sliced-source"
+
+# Comma separated sources where a missing tile means nothing is present at any deeper zoom. These
+# answer 418 instead of 204 so clients stop descending.
+# PYRAMID_SOURCES = "my-pyramid-source"
